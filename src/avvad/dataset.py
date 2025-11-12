@@ -55,6 +55,7 @@ def collate_pad(batch):
         n = f.shape[0]
         padded_feats[i, :n] = f
         padded_labels[i, :n] = l
-        mask[i, :n] = True 
+        mask[i, :n] = True   
+        
 
     return padded_feats, padded_labels, mask
