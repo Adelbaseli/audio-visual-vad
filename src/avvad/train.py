@@ -52,8 +52,8 @@ def predict_model(model, loader, device):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=Path(__file__).resolve().parents[2] / "data" / "raw")
-    parser.add_argument("--train-speakers", type=int, nargs="+", default=[1,2,3,4,5])
-    parser.add_argument("--val-speakers", type=int, nargs="+", default=[6])
+    parser.add_argument("--train-speakers", type=int, nargs="+", default=[1,2,3,4,5,6,7,8,9,10,11,12])
+    parser.add_argument("--val-speakers", type=int, nargs="+", default=[31,32,33,34])
     parser.add_argument("--epochs", type=int, default=15)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=1e-3)
@@ -68,8 +68,8 @@ def main():
     print(f"Train utterances: {len(train_ds)} (speakers {args.train_speakers})")
     print(f"Val utterances:   {len(val_ds)} (speakers {args.val_speakers})")
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate_pad)
-    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate_pad)
+    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate_pad, num_workers=8, persistent_workers=True)
+    val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, collate_fn=collate_pad, num_workers=8, persistent_workers=True)
 
     model = CRNNVad().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)

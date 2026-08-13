@@ -20,13 +20,14 @@ class CRNNVad(nn.Module):
             nn.MaxPool2d((1, 2)),
         )
         conv_out_mels = n_mels // 4
+        bidirectional = False
         self.gru = nn.GRU(
             input_size=32 * conv_out_mels,
             hidden_size=gru_hidden,
             batch_first=True,
-            bidirectional=True,
+            bidirectional=bidirectional,
         )
-        self.classifier = nn.Linear(gru_hidden * 2, 1)
+        self.classifier = nn.Linear(gru_hidden * (2 if bidirectional else 1), 1)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # x: (batch, n_frames, n_mels)
