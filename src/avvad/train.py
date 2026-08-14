@@ -15,35 +15,44 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from avvad.dataset import GridVadDataset, collate_pad
+from avvad.features import build_mel_transform, log_mel_spectrogram_batch
 from avvad.model import CRNNVad
 
 
-def train_one_epoch(model, loader, optimizer, criterion, device):
+def _features(wavs, mel_transform, db_transform):
+    """(batch, n_samples) raw audio -> (batch, n_frames, n_mels), computed on GPU."""
+    db = log_mel_spectrogram_batch(wavs, mel_transform, db_transform)  # (batch, n_mels, n_frames)
+    return db.transpose(1, 2)
+
+
+def train_one_epoch(model, loader, optimizer, criterion, device, mel_transform, db_transform):
     model.train()
     total_loss = 0.0
-    for feats, labels, mask in loader:
-        feats, labels, mask = feats.to(device), labels.to(device), mask.to(device)
+    for wavs, labels, mask in loader:
+        wavs, labels, mask = wavs.to(device), labels.to(device), mask.to(device)
+        feats = _features(wavs, mel_transform, db_transform)
         optimizer.zero_grad()
         logits = model(feats)
         loss = criterion(logits, labels)
         loss = (loss * mask).sum() / mask.sum()
         loss.backward()
         optimizer.step()
-        total_loss += loss.item() * feats.size(0)
+        total_loss += loss.item() * wavs.size(0)
     return total_loss / len(loader.dataset)
 
 
 @torch.no_grad()
-def predict_model(model, loader, device):
+def predict_model(model, loader, device, mel_transform, db_transform):
     model.eval()
     all_preds, all_labels = [], []
-    for feats, labels, mask in loader:
-        feats = feats.to(device)
+    for wavs, labels, mask in loader:
+        wavs = wavs.to(device)
+        feats = _features(wavs, mel_transform, db_transform)
         logits = model(feats)
         probs = torch.sigmoid(logits).cpu().numpy()
         mask_np = mask.numpy()
         labels_np = labels.numpy()
-        for i in range(feats.size(0)):
+        for i in range(wavs.size(0)):
             n = mask_np[i].sum()
             all_preds.append((probs[i, :n] > 0.5).astype(np.uint8))
             all_labels.append(labels_np[i, :n].astype(np.uint8))
@@ -74,16 +83,17 @@ def main():
     model = CRNNVad().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.BCEWithLogitsLoss(reduction="none")
+    mel_transform, db_transform = build_mel_transform(device)
 
     for epoch in range(1, args.epochs + 1):
-        loss = train_one_epoch(model, train_loader, optimizer, criterion, device)
+        loss = train_one_epoch(model, train_loader, optimizer, criterion, device, mel_transform, db_transform)
         print(f"epoch {epoch:02d}  train_loss={loss:.4f}")
 
     args.checkpoint.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), args.checkpoint)
     print(f"Saved checkpoint to {args.checkpoint}")
 
-    model_preds, model_labels = predict_model(model, val_loader, device)
+    model_preds, model_labels = predict_model(model, val_loader, device, mel_transform, db_transform)
 
     print("\n=== Validation results (held-out speaker) ===")
     print(f"CRNN     acc={accuracy_score(model_labels, model_preds):.4f}  f1={f1_score(model_labels, model_preds):.4f}")
